@@ -73,8 +73,8 @@ with tab1:
 
     with col1:
         st.markdown("#### Kota Bandung — Random Forest")
-        if os.path.exists('outputs/flood_susceptibility_bandung.png'):
-            st.image('outputs/flood_susceptibility_bandung.png',
+        if os.path.exists('outputs/flood_susceptibility_map_bandung.png'):
+            st.image('outputs/flood_susceptibility_map_bandung.png',
                      caption='Flood Susceptibility Map — Bandung',
                      use_column_width=True)
         else:
@@ -86,8 +86,8 @@ with tab1:
 
     with col2:
         st.markdown("#### Kota Bogor — XGBoost")
-        if os.path.exists('outputs/flood_susceptibility_bogor.png'):
-            st.image('outputs/flood_susceptibility_bogor.png',
+        if os.path.exists('outputs/flood_susceptibility_map_bogor.png'):
+            st.image('outputs/flood_susceptibility_map_bogor.png',
                      caption='Flood Susceptibility Map — Bogor',
                      use_column_width=True)
         else:
