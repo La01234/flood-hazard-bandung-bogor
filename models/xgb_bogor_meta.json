@@ -1,0 +1,27 @@
+{
+  "feature_cols": [
+    "elevation",
+    "slope",
+    "aspect",
+    "TWI",
+    "HAND",
+    "NDVI",
+    "MNDWI",
+    "NDBI",
+    "SAR_VV_baseline",
+    "dist_river"
+  ],
+  "best_threshold": 0.5000000000000001,
+  "auc": 0.7106784360998408,
+  "avg_precision": 0.508288301217217,
+  "best_params": {
+    "max_depth": 5,
+    "learning_rate": 0.038362524063547586,
+    "n_estimators": 385,
+    "subsample": 0.9246954495544759,
+    "colsample_bytree": 0.8474685170421431,
+    "scale_pos_weight": 2.9049762440610154,
+    "random_state": 42,
+    "eval_metric": "auc"
+  }
+}
