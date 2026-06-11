@@ -11,15 +11,15 @@
     "SAR_VV_baseline",
     "dist_river"
   ],
-  "best_threshold": 0.5000000000000001,
-  "auc": 0.7110819668762154,
-  "avg_precision": 0.508182038814581,
+  "best_threshold": 0.45000000000000007,
+  "auc": 0.7108289080406963,
+  "avg_precision": 0.507841771331694,
   "best_params": {
     "max_depth": 6,
-    "learning_rate": 0.049927830105435084,
-    "n_estimators": 309,
-    "subsample": 0.7944570245376027,
-    "colsample_bytree": 0.8925008402058356,
+    "learning_rate": 0.05906716679903546,
+    "n_estimators": 183,
+    "subsample": 0.944396338934258,
+    "colsample_bytree": 0.8619499392909509,
     "scale_pos_weight": 2.9049762440610154,
     "random_state": 42,
     "eval_metric": "auc"
