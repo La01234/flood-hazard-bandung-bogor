@@ -66,23 +66,73 @@ with tab1:
             st.metric('AUC-ROC','0.71')
             st.metric('Flood Area','20.5%')
     else:
+        import base64, rasterio
+        from rasterio.warp import transform_bounds
+
         center = CITY_CENTER[kota_peta]
+        img_path = f'outputs/flood_susceptibility_map_{kota_peta.lower()}.png'
+        tif_path = f'data/raw/flood_features_{kota_peta.lower()}_v2.tif'
+
+        # Hitung bounds WGS84 dari raster
+        raster_bounds = None
+        if os.path.exists(tif_path):
+            with rasterio.open(tif_path) as src:
+                b = transform_bounds(src.crs, 'EPSG:4326',
+                                     src.bounds.left, src.bounds.bottom,
+                                     src.bounds.right, src.bounds.top)
+                raster_bounds = [[b[1], b[0]], [b[3], b[2]]]  # [[lat_min,lon_min],[lat_max,lon_max]]
+
         m = folium.Map(location=center, zoom_start=13, tiles='CartoDB positron')
         folium.TileLayer('OpenStreetMap', name='OpenStreetMap').add_to(m)
-        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', attr='Google Satellite', name='Satellite').add_to(m)
-        folium.Marker(location=center, popup=f'Pusat Kota {kota_peta}', icon=folium.Icon(color='blue', icon='info-sign')).add_to(m)
+        folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+                         attr='Google Satellite', name='Satellite').add_to(m)
+
+        # Overlay PNG susceptibility map
+        if os.path.exists(img_path) and raster_bounds:
+            with open(img_path, 'rb') as f_img:
+                img_b64 = base64.b64encode(f_img.read()).decode()
+            folium.raster_layers.ImageOverlay(
+                image=f'data:image/png;base64,{img_b64}',
+                bounds=raster_bounds,
+                opacity=0.6,
+                name='Flood Susceptibility',
+                interactive=True,
+                cross_origin=False,
+            ).add_to(m)
+
+        # Batas wilayah studi
+        if raster_bounds:
+            lat_min, lon_min = raster_bounds[0]
+            lat_max, lon_max = raster_bounds[1]
+            folium.Rectangle(
+                bounds=raster_bounds,
+                color='#185FA5', weight=2, fill=False,
+                tooltip='Batas Area Studi'
+            ).add_to(m)
+
+        folium.Marker(location=center, popup=f'Pusat Kota {kota_peta}',
+                      icon=folium.Icon(color='blue', icon='info-sign')).add_to(m)
         folium.LayerControl().add_to(m)
-        img_path = f'outputs/flood_susceptibility_map_{kota_peta.lower()}.png'
+
         if os.path.exists(img_path):
             col_map, col_img = st.columns([1,1])
             with col_map:
                 st.markdown(f'#### Peta Interaktif — {kota_peta}')
-                st_folium(m, width=500, height=450)
+                st.caption('Layer susceptibility map bisa di-toggle di pojok kanan atas peta')
+                st_folium(m, width='100%', height=480)
             with col_img:
                 st.markdown('#### Flood Susceptibility Map')
                 st.image(img_path, use_column_width=True)
+                if kota_peta == 'Bandung':
+                    st.metric('AUC-ROC','0.70')
+                    st.metric('Flood Area','12.9%')
+                else:
+                    st.metric('AUC-ROC','0.71')
+                    st.metric('Flood Area','20.5%')
         else:
-            st_folium(m, width=700, height=500)
+            st.info('Susceptibility map PNG belum tersedia — menampilkan peta dasar')
+            st_folium(m, width='100%', height=500)
+
     st.divider()
     st.markdown('**Legenda Tingkat Hazard:**')
     col_l1,col_l2,col_l3,col_l4 = st.columns(4)
@@ -156,6 +206,7 @@ with tab2:
 with tab3:
     import rasterio
     from rasterio.transform import rowcol
+    from rasterio.warp import transform_bounds
     from pyproj import Transformer
 
     RASTER = {
@@ -180,15 +231,23 @@ with tab3:
     }
 
     @st.cache_data
+    def get_raster_bounds_wgs84(kota_key):
+        with rasterio.open(RASTER[kota_key]) as src:
+            b = transform_bounds(src.crs, 'EPSG:4326',
+                                 src.bounds.left, src.bounds.bottom,
+                                 src.bounds.right, src.bounds.top)
+            return {'lon_min': b[0], 'lat_min': b[1], 'lon_max': b[2], 'lat_max': b[3]}
+
+    @st.cache_data
     def extract_features_from_raster(kota_key, lat_wgs, lon_wgs):
         path = RASTER[kota_key]
         transformer = Transformer.from_crs("EPSG:4326", "EPSG:32748", always_xy=True)
         x_utm, y_utm = transformer.transform(lon_wgs, lat_wgs)
         result = {}
         with rasterio.open(path) as src:
-            bounds = src.bounds
-            if not (bounds.left <= x_utm <= bounds.right and bounds.bottom <= y_utm <= bounds.top):
-                return None, "Koordinat di luar area studi"
+            b = src.bounds
+            if not (b.left <= x_utm <= b.right and b.bottom <= y_utm <= b.top):
+                return None, f"Koordinat di luar area studi ({x_utm:.0f}, {y_utm:.0f} UTM)"
             row, col = rowcol(src.transform, x_utm, y_utm)
             row = max(0, min(row, src.height-1))
             col = max(0, min(col, src.width-1))
@@ -203,11 +262,18 @@ with tab3:
 
     kota = st.selectbox('Pilih Kota', ['Bandung (Random Forest)', 'Bogor (XGBoost)'], key='kota_sel')
     kota_key = 'Bandung' if 'Bandung' in kota else 'Bogor'
+
+    # Jika kota berubah, reset koordinat ke pusat kota baru
+    if st.session_state.get('active_kota') != kota_key:
+        st.session_state['active_kota'] = kota_key
+        st.session_state['lat'] = CITY_CENTER[kota_key][0]
+        st.session_state['lon'] = CITY_CENTER[kota_key][1]
+        st.session_state['has_prediction'] = False
+
     center_map = CITY_CENTER[kota_key]
+    bounds_wgs = get_raster_bounds_wgs84(kota_key)
 
     st.divider()
-
-    # ── PETA KLIK ──────────────────────────────────────────────
     col_map, col_form = st.columns([1.1, 0.9])
 
     with col_map:
@@ -219,23 +285,32 @@ with tab3:
             attr='Google Satellite', name='Satellite'
         ).add_to(m_click)
 
-        # Marker lokasi terakhir
+        # Batas wilayah studi
+        folium.Rectangle(
+            bounds=[[bounds_wgs['lat_min'], bounds_wgs['lon_min']],
+                    [bounds_wgs['lat_max'], bounds_wgs['lon_max']]],
+            color='#185FA5', weight=2.5, fill=True,
+            fill_color='#185FA5', fill_opacity=0.05,
+            tooltip=f'Area Studi {kota_key} — klik di dalam area ini'
+        ).add_to(m_click)
+
+        # Marker lokasi terpilih
         cur_lat = st.session_state.get('lat', center_map[0])
         cur_lon = st.session_state.get('lon', center_map[1])
         has_pred = st.session_state.get('has_prediction') and st.session_state.get('pred_kota') == kota_key
-        marker_col = 'red' if (has_pred and st.session_state.get('last_pred')==1) else                      'green' if (has_pred and st.session_state.get('last_pred')==0) else 'blue'
+        marker_col = 'red'   if (has_pred and st.session_state.get('last_pred')==1) else                      'green' if (has_pred and st.session_state.get('last_pred')==0) else 'blue'
         folium.Marker(
             location=[cur_lat, cur_lon],
+            popup=f'Lat: {cur_lat:.5f}<br>Lon: {cur_lon:.5f}',
             icon=folium.Icon(color=marker_col, icon='map-marker')
         ).add_to(m_click)
         folium.LayerControl().add_to(m_click)
 
-        map_data = st_folium(m_click, width='100%', height=400,
+        map_data = st_folium(m_click, width='100%', height=420,
                              returned_objects=['last_clicked'], key=f'map_{kota_key}')
 
-        # Update koordinat dari klik
         if map_data and map_data.get('last_clicked'):
-            clicked = map_data['last_clicked']
+            clicked  = map_data['last_clicked']
             new_lat  = round(clicked['lat'], 6)
             new_lon  = round(clicked['lng'], 6)
             if (new_lat, new_lon) != (st.session_state.get('lat'), st.session_state.get('lon')):
@@ -244,9 +319,8 @@ with tab3:
                 st.session_state['has_prediction'] = False
                 st.rerun()
 
-        st.caption(f'Klik peta untuk pilih titik • Batas studi: {"Bandung: -6.97~-6.83 lat, 107.54~107.74 lon" if kota_key=="Bandung" else "Bogor: -6.68~-6.51 lat, 106.73~106.85 lon"}')
+        st.caption(f'Area studi (kotak biru): Lat {bounds_wgs["lat_min"]:.3f}~{bounds_wgs["lat_max"]:.3f} | Lon {bounds_wgs["lon_min"]:.3f}~{bounds_wgs["lon_max"]:.3f}')
 
-    # ── FORM ───────────────────────────────────────────────────
     with col_form:
         st.markdown('#### Koordinat & Fitur')
 
@@ -258,37 +332,32 @@ with tab3:
             lon = st.number_input('Longitude', value=float(st.session_state.get('lon', center_map[1])),
                                   step=0.0001, format='%.6f', key='lon_input')
 
-        # Update session jika input manual berubah
         if (lat, lon) != (st.session_state.get('lat'), st.session_state.get('lon')):
             st.session_state['lat'] = lat
             st.session_state['lon'] = lon
             st.session_state['has_prediction'] = False
 
-        # Ekstrak fitur dari raster
         feats, err = extract_features_from_raster(kota_key, lat, lon)
 
         if err:
             st.warning(f'⚠️ {err}')
+            st.caption(f'Pastikan koordinat berada di dalam kotak biru pada peta')
         elif feats:
-            st.success('Nilai fitur berhasil diekstrak dari raster')
-            # Tampilkan tabel fitur
+            st.success('✅ Nilai fitur diekstrak dari raster')
             rows = []
             for feat, val in feats.items():
                 label, unit, desc = FEATURE_LABELS[feat]
                 rows.append({'Fitur': f'{label} ({unit})' if unit else label,
                              'Nilai': val, 'Keterangan': desc})
-            import pandas as pd
             df_feats = pd.DataFrame(rows)
             st.dataframe(df_feats, use_container_width=True, hide_index=True,
                          column_config={'Nilai': st.column_config.NumberColumn(format='%.4f')})
 
         st.divider()
-
-        # Threshold info
         threshold_used = st.session_state.get('slider_bdg', rf_threshold) if 'Bandung' in kota                          else st.session_state.get('slider_bgr', xgb_threshold)
         st.caption(f'Model: {"Random Forest" if "Bandung" in kota else "XGBoost"} | Threshold: {threshold_used:.2f}')
 
-        btn_predict = st.button('Prediksi Sekarang', type='primary',
+        btn_predict = st.button('🔍 Prediksi Sekarang', type='primary',
                                 disabled=(feats is None), use_container_width=True)
 
         if btn_predict and feats:
@@ -312,7 +381,7 @@ with tab3:
             })
             st.rerun()
 
-    # ── HASIL PREDIKSI ─────────────────────────────────────────
+    # ── HASIL ────────────────────────────────────────────────
     if st.session_state.get('has_prediction') and st.session_state.get('pred_kota') == kota_key:
         pred       = st.session_state['last_pred']
         proba      = st.session_state['last_proba']
@@ -335,7 +404,6 @@ with tab3:
         else:
             st.success('Lokasi ini terindikasi AMAN dari risiko banjir berdasarkan model ML')
 
-        # Gauge chart
         fig = go.Figure(go.Indicator(
             mode='gauge+number+delta',
             value=proba*100,
@@ -356,7 +424,7 @@ with tab3:
                     'value': t_used*100
                 }
             },
-            title={'text': 'Flood Risk Score'}
+            title={'text': f'Flood Risk Score — {res_lat:.4f}, {res_lon:.4f}'}
         ))
         fig.update_layout(height=280, margin=dict(t=40,b=10,l=20,r=20))
         st.plotly_chart(fig, use_container_width=True)
