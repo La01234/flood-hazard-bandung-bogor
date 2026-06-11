@@ -268,7 +268,6 @@ with tab3:
         st.session_state['lat'] = CITY_CENTER[kota_key][0]
         st.session_state['lon'] = CITY_CENTER[kota_key][1]
         st.session_state['has_prediction'] = False
-        extract_features_from_raster.clear()
         st.rerun()
 
     center_map = CITY_CENTER[kota_key]
