@@ -12,14 +12,14 @@
     "dist_river"
   ],
   "best_threshold": 0.45000000000000007,
-  "auc": 0.7108289080406963,
-  "avg_precision": 0.507841771331694,
+  "auc": 0.7107269525971911,
+  "avg_precision": 0.507883277322273,
   "best_params": {
-    "max_depth": 6,
-    "learning_rate": 0.05906716679903546,
-    "n_estimators": 183,
-    "subsample": 0.944396338934258,
-    "colsample_bytree": 0.8619499392909509,
+    "max_depth": 5,
+    "learning_rate": 0.033498191887291986,
+    "n_estimators": 368,
+    "subsample": 0.9702489908377029,
+    "colsample_bytree": 0.9556726908859892,
     "scale_pos_weight": 2.9049762440610154,
     "random_state": 42,
     "eval_metric": "auc"
