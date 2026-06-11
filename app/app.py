@@ -167,12 +167,66 @@ with tab3:
     if use_default:
         for key, val in defaults.items():
             st.session_state[key] = val
+        st.session_state['lat'] = CITY_CENTER[kota_key][0]
+        st.session_state['lon'] = CITY_CENTER[kota_key][1]
+
     st.divider()
+
+    # --- PETA KLIK DULU, baru form ---
+    st.markdown('#### 1. Klik peta untuk pilih lokasi (opsional)')
+    center_map = CITY_CENTER[kota_key]
+    m_click = folium.Map(location=center_map, zoom_start=13, tiles='CartoDB positron')
+    folium.TileLayer('OpenStreetMap', name='OpenStreetMap').add_to(m_click)
+    folium.TileLayer(
+        tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+        attr='Google Satellite', name='Satellite'
+    ).add_to(m_click)
+
+    # Tampilkan marker kalau sudah ada koordinat tersimpan
+    saved_lat = st.session_state.get('lat', center_map[0])
+    saved_lon = st.session_state.get('lon', center_map[1])
+    folium.Marker(
+        location=[saved_lat, saved_lon],
+        popup='Lokasi dipilih',
+        icon=folium.Icon(color='blue', icon='map-marker')
+    ).add_to(m_click)
+    folium.LayerControl().add_to(m_click)
+
+    map_data = st_folium(m_click, width='100%', height=350, returned_objects=['last_clicked'])
+
+    # Update koordinat dari klik peta
+    if map_data and map_data.get('last_clicked'):
+        clicked = map_data['last_clicked']
+        st.session_state['lat'] = round(clicked['lat'], 6)
+        st.session_state['lon'] = round(clicked['lng'], 6)
+        st.success(f"Koordinat dipilih: {st.session_state['lat']}, {st.session_state['lon']}")
+
+    st.divider()
+    st.markdown('#### 2. Atau masukkan koordinat manual')
+    col_lat, col_lon = st.columns(2)
+    with col_lat:
+        lat = st.number_input(
+            'Latitude',
+            value=float(st.session_state.get('lat', center_map[0])),
+            step=0.0001, format='%.6f', key='lat_input'
+        )
+        st.session_state['lat'] = lat
+    with col_lon:
+        lon = st.number_input(
+            'Longitude',
+            value=float(st.session_state.get('lon', center_map[1])),
+            step=0.0001, format='%.6f', key='lon_input'
+        )
+        st.session_state['lon'] = lon
+    st.caption('Bandung: Lat -6.97~-6.83, Lon 107.54~107.74 | Bogor: Lat -6.68~-6.51, Lon 106.73~106.85')
+
+    st.divider()
+    st.markdown('#### 3. Nilai fitur')
     col1, col2, col3 = st.columns(3)
     with col1:
         elevation    = st.number_input('Elevation (m)', value=float(st.session_state.get('elevation', defaults['elevation'])), step=1.0)
-        slope        = st.number_input('Slope (gradian)', value=float(st.session_state.get('slope', defaults['slope'])), step=0.1)
-        aspect       = st.number_input('Aspect (gradian)', value=float(st.session_state.get('aspect', defaults['aspect'])), step=1.0)
+        slope        = st.number_input('Slope (°)', value=float(st.session_state.get('slope', defaults['slope'])), step=0.1)
+        aspect       = st.number_input('Aspect (°)', value=float(st.session_state.get('aspect', defaults['aspect'])), step=1.0)
         TWI          = st.number_input('TWI', value=float(st.session_state.get('TWI', defaults['TWI'])), step=0.1)
     with col2:
         HAND         = st.number_input('HAND (m)', value=float(st.session_state.get('HAND', defaults['HAND'])), step=0.1)
@@ -182,20 +236,27 @@ with tab3:
         NDBI         = st.number_input('NDBI', value=float(st.session_state.get('NDBI', defaults['NDBI'])), step=0.01, min_value=-1.0, max_value=1.0)
         SAR_baseline = st.number_input('SAR VV Baseline (dB)', value=float(st.session_state.get('SAR_baseline', defaults['SAR_baseline'])), step=0.1)
         dist_river   = st.number_input('Jarak ke Sungai (m)', value=float(st.session_state.get('dist_river', defaults['dist_river'])), step=10.0)
+
     st.divider()
-    col_pred, col_map = st.columns([1,1])
-    with col_pred:
-        threshold_used = st.session_state.get('slider_bdg', rf_threshold) if 'Bandung' in kota else st.session_state.get('slider_bgr', xgb_threshold)
-        st.caption(f'Threshold aktif: {threshold_used:.2f}')
-        if st.button('Prediksi Sekarang', type='primary'):
-            features = np.array([[elevation, slope, aspect, TWI, HAND, NDVI, MNDWI, NDBI, SAR_baseline, dist_river]])
-            if 'Bandung' in kota:
-                proba = rf_model.predict_proba(features)[0][1]
-                model_name = 'Random Forest'
-            else:
-                proba = xgb_model.predict_proba(features)[0][1]
-                model_name = 'XGBoost'
-            pred = 1 if proba >= threshold_used else 0
+    st.markdown('#### 4. Prediksi')
+    threshold_used = st.session_state.get('slider_bdg', rf_threshold) if 'Bandung' in kota else st.session_state.get('slider_bgr', xgb_threshold)
+    st.caption(f'Threshold aktif: {threshold_used:.2f}')
+
+    if st.button('Prediksi Sekarang', type='primary'):
+        features = np.array([[elevation, slope, aspect, TWI, HAND, NDVI, MNDWI, NDBI, SAR_baseline, dist_river]])
+        if 'Bandung' in kota:
+            proba = rf_model.predict_proba(features)[0][1]
+            model_name = 'Random Forest'
+        else:
+            proba = xgb_model.predict_proba(features)[0][1]
+            model_name = 'XGBoost'
+        pred = 1 if proba >= threshold_used else 0
+        st.session_state['last_pred']  = pred
+        st.session_state['last_proba'] = proba
+        st.session_state['last_model'] = model_name
+
+        col_res1, col_res2 = st.columns([1,1])
+        with col_res1:
             if pred == 1:
                 st.error('BAHAYA BANJIR TERDETEKSI')
             else:
@@ -203,9 +264,12 @@ with tab3:
             st.metric('Probabilitas Banjir', f'{proba*100:.1f}%')
             st.metric('Model', model_name)
             st.metric('Threshold', f'{threshold_used:.2f}')
+            st.metric('Koordinat', f'{st.session_state["lat"]:.4f}, {st.session_state["lon"]:.4f}')
+
+        with col_res2:
             fig, ax = plt.subplots(figsize=(5,2.5))
-            colors = ['green','yellow','orange','red']
-            cmap = mcolors.LinearSegmentedColormap.from_list('hazard', colors)
+            colors_ramp = ['green','yellow','orange','red']
+            cmap = mcolors.LinearSegmentedColormap.from_list('hazard', colors_ramp)
             ax.barh(['Risk'], [proba], color=cmap(proba), height=0.4)
             ax.barh(['Risk'], [1-proba], left=[proba], color='#f0f0f0', height=0.4)
             ax.axvline(x=threshold_used, color='black', linestyle='--', linewidth=2, label=f'Threshold ({threshold_used:.2f})')
@@ -216,14 +280,31 @@ with tab3:
             plt.tight_layout()
             st.pyplot(fig)
             plt.close()
-    with col_map:
-        st.markdown('#### Lokasi pada Peta')
-        center = CITY_CENTER[kota_key]
-        m_pred = folium.Map(location=center, zoom_start=13, tiles='CartoDB positron')
-        folium.Marker(location=center, popup=f'{kota_key} — Elevation: {elevation:.0f}m', icon=folium.Icon(color='red', icon='info-sign')).add_to(m_pred)
-        folium.Circle(location=center, radius=500, color='red', fill=True, fill_opacity=0.3).add_to(m_pred)
-        st_folium(m_pred, width=450, height=400)
-        st.caption('Marker menunjukkan pusat kota yang dipilih')
+
+        # Peta hasil prediksi
+        st.markdown('#### Lokasi pada peta')
+        cur_lat = st.session_state['lat']
+        cur_lon = st.session_state['lon']
+        m_result = folium.Map(location=[cur_lat, cur_lon], zoom_start=15, tiles='CartoDB positron')
+        marker_color = 'red' if pred == 1 else 'green'
+        popup_html = f"""<b>{'BAHAYA BANJIR' if pred == 1 else 'AMAN'}</b><br>
+            Lat: {cur_lat:.6f}<br>Lon: {cur_lon:.6f}<br>
+            Probabilitas: {proba*100:.1f}%<br>Model: {model_name}"""
+        folium.Marker(
+            location=[cur_lat, cur_lon],
+            popup=folium.Popup(popup_html, max_width=220),
+            icon=folium.Icon(color=marker_color, icon='info-sign')
+        ).add_to(m_result)
+        folium.Circle(
+            location=[cur_lat, cur_lon],
+            radius=300,
+            color=marker_color,
+            fill=True,
+            fill_opacity=0.25
+        ).add_to(m_result)
+        st_folium(m_result, width='100%', height=350)
+        st.caption('Merah = bahaya banjir | Hijau = aman')
+
 
 st.divider()
 st.markdown('<div style="text-align:center;color:gray;font-size:12px;">Flood Hazard Explorer | Urban Analytics UAS 2025 | Bandung (RF) + Bogor (XGBoost)</div>', unsafe_allow_html=True)
