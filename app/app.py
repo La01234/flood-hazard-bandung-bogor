@@ -238,7 +238,6 @@ with tab3:
                                  src.bounds.right, src.bounds.top)
             return {'lon_min': b[0], 'lat_min': b[1], 'lon_max': b[2], 'lat_max': b[3]}
 
-    @st.cache_data
     def extract_features_from_raster(kota_key, lat_wgs, lon_wgs):
         path = RASTER[kota_key]
         transformer = Transformer.from_crs("EPSG:4326", "EPSG:32748", always_xy=True)
@@ -269,6 +268,8 @@ with tab3:
         st.session_state['lat'] = CITY_CENTER[kota_key][0]
         st.session_state['lon'] = CITY_CENTER[kota_key][1]
         st.session_state['has_prediction'] = False
+        extract_features_from_raster.clear()
+        st.rerun()
 
     center_map = CITY_CENTER[kota_key]
     bounds_wgs = get_raster_bounds_wgs84(kota_key)
