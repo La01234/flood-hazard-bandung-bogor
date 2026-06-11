@@ -265,10 +265,9 @@ with tab3:
     # Jika kota berubah, reset koordinat ke pusat kota baru
     if st.session_state.get('active_kota') != kota_key:
         st.session_state['active_kota'] = kota_key
-        st.session_state['lat'] = CITY_CENTER[kota_key][0]
-        st.session_state['lon'] = CITY_CENTER[kota_key][1]
+        st.session_state[f'lat_{kota_key}'] = CITY_CENTER[kota_key][0]
+        st.session_state[f'lon_{kota_key}'] = CITY_CENTER[kota_key][1]
         st.session_state['has_prediction'] = False
-        st.rerun()
 
     center_map = CITY_CENTER[kota_key]
     bounds_wgs = get_raster_bounds_wgs84(kota_key)
@@ -295,8 +294,8 @@ with tab3:
         ).add_to(m_click)
 
         # Marker lokasi terpilih
-        cur_lat = st.session_state.get('lat', center_map[0])
-        cur_lon = st.session_state.get('lon', center_map[1])
+        cur_lat = st.session_state.get(f'lat_{kota_key}', center_map[0])
+        cur_lon = st.session_state.get(f'lon_{kota_key}', center_map[1])
         has_pred = st.session_state.get('has_prediction') and st.session_state.get('pred_kota') == kota_key
         marker_col = 'red'   if (has_pred and st.session_state.get('last_pred')==1) else                      'green' if (has_pred and st.session_state.get('last_pred')==0) else 'blue'
         folium.Marker(
@@ -313,9 +312,9 @@ with tab3:
             clicked  = map_data['last_clicked']
             new_lat  = round(clicked['lat'], 6)
             new_lon  = round(clicked['lng'], 6)
-            if (new_lat, new_lon) != (st.session_state.get('lat'), st.session_state.get('lon')):
-                st.session_state['lat'] = new_lat
-                st.session_state['lon'] = new_lon
+            if (new_lat, new_lon) != (st.session_state.get(f'lat_{kota_key}'), st.session_state.get(f'lon_{kota_key}')):
+                st.session_state[f'lat_{kota_key}'] = new_lat
+                st.session_state[f'lon_{kota_key}'] = new_lon
                 st.session_state['has_prediction'] = False
                 st.rerun()
 
@@ -326,18 +325,22 @@ with tab3:
 
         col_lat, col_lon = st.columns(2)
         with col_lat:
-            lat = st.number_input('Latitude', value=float(st.session_state.get('lat', center_map[0])),
-                                  step=0.0001, format='%.6f', key='lat_input')
+            lat = st.number_input('Latitude', value=float(st.session_state.get(f'lat_{kota_key}', center_map[0])),
+                                  step=0.0001, format='%.6f', key=f'lat_input_{kota_key}')
         with col_lon:
-            lon = st.number_input('Longitude', value=float(st.session_state.get('lon', center_map[1])),
-                                  step=0.0001, format='%.6f', key='lon_input')
+            lon = st.number_input('Longitude', value=float(st.session_state.get(f'lon_{kota_key}', center_map[1])),
+                                  step=0.0001, format='%.6f', key=f'lon_input_{kota_key}')
 
-        if (lat, lon) != (st.session_state.get('lat'), st.session_state.get('lon')):
-            st.session_state['lat'] = lat
-            st.session_state['lon'] = lon
+        if (lat, lon) != (st.session_state.get(f'lat_{kota_key}'), st.session_state.get(f'lon_{kota_key}')):
+            st.session_state[f'lat_{kota_key}'] = lat
+            st.session_state[f'lon_{kota_key}'] = lon
             st.session_state['has_prediction'] = False
 
-        feats, err = extract_features_from_raster(kota_key, lat, lon)
+        feats, err = extract_features_from_raster(kota_key,
+                                                   st.session_state.get(f'lat_{kota_key}', center_map[0]),
+                                                   st.session_state.get(f'lon_{kota_key}', center_map[1]))
+        lat = st.session_state.get(f'lat_{kota_key}', center_map[0])
+        lon = st.session_state.get(f'lon_{kota_key}', center_map[1])
 
         if err:
             st.warning(f'⚠️ {err}')
